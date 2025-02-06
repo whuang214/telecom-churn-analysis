@@ -1,90 +1,192 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_selection import mutual_info_classif, f_classif
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.feature_selection import mutual_info_classif, f_classif
-from sklearn.inspection import permutation_importance
-from sklearn.metrics import accuracy_score, confusion_matrix
-import scipy.stats as stats
-from sklearn.preprocessing import LabelEncoder
 
-# Load the dataset
-file_path = "data/CustomerData_Composite-4.csv"
-df = pd.read_csv(file_path)
 
-# Drop non-useful columns
-drop_columns = [
-    "customer_id",
-    "churn_label",
-    "churn_category",
-    "churn_reason",
-    "customer_status",
-]
-df = df.drop(columns=drop_columns, errors="ignore")
+def load_data(file_path: str) -> pd.DataFrame:
+    """Load the dataset from a CSV file."""
+    return pd.read_csv(file_path)
 
-# Identify categorical and numerical features
-categorical_features = df.select_dtypes(include=["object"]).columns.tolist()
-numerical_features = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
 
-# Apply label encoding to categorical features
-label_encoders = {}
-for col in categorical_features:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col])
-    label_encoders[col] = le
+def drop_non_useful_columns(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+    """Drop columns that are not useful for modeling."""
+    return df.drop(columns=columns, errors="ignore")
 
-# Define the target variables
-X = df.drop(columns=["churn_value", "cltv"], errors="ignore")
-y_classification = df["churn_value"]
-y_regression = df["cltv"]
 
-# Split into training and testing sets (80-20 split)
-X_train_cls, X_test_cls, y_train_cls, y_test_cls = train_test_split(
-    X, y_classification, test_size=0.2, random_state=42
-)
-X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
-    X, y_regression, test_size=0.2, random_state=42
-)
+def encode_categorical_features(df: pd.DataFrame) -> (pd.DataFrame, dict):
+    """
+    Identify and encode categorical features using Label Encoding.
 
-# 1. Naïve Bayes - Compute Mutual Information Scores
-mi_scores = mutual_info_classif(X_train_cls, y_train_cls)
-mi_scores_df = pd.DataFrame(
-    {"Feature": X_train_cls.columns, "MI Score": mi_scores}
-).sort_values(by="MI Score", ascending=False)
+    Returns:
+        df: DataFrame with encoded categorical columns.
+        label_encoders: Dictionary of LabelEncoders for each encoded column.
+    """
+    label_encoders = {}
+    categorical_features = df.select_dtypes(include=["object"]).columns.tolist()
+    for col in categorical_features:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+        label_encoders[col] = le
+    return df, label_encoders
 
-# 2. Classification Tree - Feature Importances
-clf_tree = DecisionTreeClassifier(random_state=42)
-clf_tree.fit(X_train_cls, y_train_cls)
-tree_importances_df = pd.DataFrame(
-    {"Feature": X_train_cls.columns, "Importance": clf_tree.feature_importances_}
-).sort_values(by="Importance", ascending=False)
 
-# 3. Regression Tree - Feature Importances for CLTV Prediction
-reg_tree = DecisionTreeRegressor(random_state=42)
-reg_tree.fit(X_train_reg, y_train_reg)
-reg_tree_importances_df = pd.DataFrame(
-    {"Feature": X_train_reg.columns, "Importance": reg_tree.feature_importances_}
-).sort_values(by="Importance", ascending=False)
+def split_data(
+    df: pd.DataFrame,
+    target_class: str,
+    target_reg: str,
+    test_size: float = 0.2,
+    random_state: int = 42,
+):
+    """
+    Split the data into training and testing sets for both classification and regression tasks.
 
-# 4. Random Forest - Feature Importances
-rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_model.fit(X_train_cls, y_train_cls)
-rf_importances_df = pd.DataFrame(
-    {"Feature": X_train_cls.columns, "Importance": rf_model.feature_importances_}
-).sort_values(by="Importance", ascending=False)
+    Returns:
+        X_train_cls, X_test_cls, y_train_cls, y_test_cls,
+        X_train_reg, X_test_reg, y_train_reg, y_test_reg
+    """
+    X = df.drop(columns=[target_class, target_reg], errors="ignore")
+    y_classification = df[target_class]
+    y_regression = df[target_reg]
 
-# 5. Discriminant Analysis - F-Statistics for Feature Importance
-f_scores, p_values = f_classif(X_train_cls, y_train_cls)
-lda_f_stats_df = pd.DataFrame(
-    {"Feature": X_train_cls.columns, "F-Score": f_scores, "P-Value": p_values}
-).sort_values(by="F-Score", ascending=False)
+    X_train_cls, X_test_cls, y_train_cls, y_test_cls = train_test_split(
+        X, y_classification, test_size=test_size, random_state=random_state
+    )
+    X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
+        X, y_regression, test_size=test_size, random_state=random_state
+    )
+    return (
+        X_train_cls,
+        X_test_cls,
+        y_train_cls,
+        y_test_cls,
+        X_train_reg,
+        X_test_reg,
+        y_train_reg,
+        y_test_reg,
+    )
 
-# Display results
-print("Mutual Information Scores (Naïve Bayes):\n", mi_scores_df)
-print("\nDecision Tree Feature Importance:\n", tree_importances_df)
-print("\nRegression Tree Feature Importance:\n", reg_tree_importances_df)
-print("\nRandom Forest Feature Importance:\n", rf_importances_df)
-print("\nDiscriminant Analysis F-Scores:\n", lda_f_stats_df)
+
+def compute_mutual_information(
+    X_train: pd.DataFrame, y_train: pd.Series
+) -> pd.DataFrame:
+    """Compute Mutual Information Scores for feature selection (Naïve Bayes perspective)."""
+    mi_scores = mutual_info_classif(X_train, y_train)
+    mi_scores_df = pd.DataFrame({"Feature": X_train.columns, "MI Score": mi_scores})
+    return mi_scores_df.sort_values(by="MI Score", ascending=False)
+
+
+def compute_decision_tree_importance(
+    X_train: pd.DataFrame, y_train: pd.Series
+) -> pd.DataFrame:
+    """Compute feature importance using a Decision Tree Classifier."""
+    clf_tree = DecisionTreeClassifier(random_state=42)
+    clf_tree.fit(X_train, y_train)
+    importances_df = pd.DataFrame(
+        {"Feature": X_train.columns, "Importance": clf_tree.feature_importances_}
+    )
+    return importances_df.sort_values(by="Importance", ascending=False)
+
+
+def compute_decision_tree_regression_importance(
+    X_train: pd.DataFrame, y_train: pd.Series
+) -> pd.DataFrame:
+    """Compute feature importance using a Decision Tree Regressor for CLTV prediction."""
+    reg_tree = DecisionTreeRegressor(random_state=42)
+    reg_tree.fit(X_train, y_train)
+    importances_df = pd.DataFrame(
+        {"Feature": X_train.columns, "Importance": reg_tree.feature_importances_}
+    )
+    return importances_df.sort_values(by="Importance", ascending=False)
+
+
+def compute_random_forest_importance(
+    X_train: pd.DataFrame, y_train: pd.Series
+) -> pd.DataFrame:
+    """Compute feature importance using a Random Forest Classifier."""
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    importances_df = pd.DataFrame(
+        {"Feature": X_train.columns, "Importance": rf_model.feature_importances_}
+    )
+    return importances_df.sort_values(by="Importance", ascending=False)
+
+
+def compute_f_statistics(X_train: pd.DataFrame, y_train: pd.Series) -> pd.DataFrame:
+    """
+    Compute F-statistics and corresponding p-values for features using discriminant analysis.
+    Useful for ranking features in a classification context.
+    """
+    f_scores, p_values = f_classif(X_train, y_train)
+    f_stats_df = pd.DataFrame(
+        {"Feature": X_train.columns, "F-Score": f_scores, "P-Value": p_values}
+    )
+    return f_stats_df.sort_values(by="F-Score", ascending=False)
+
+
+def display_results(results: dict):
+    """Print out the DataFrames containing the computed feature importance scores."""
+    for title, df in results.items():
+        print(f"\n{title}:\n", df)
+
+
+def main():
+    # Define file path and columns to drop
+    file_path = "data/CustomerData_Composite-4.csv"
+    drop_columns = [
+        "customer_id",
+        "churn_label",
+        "churn_category",
+        "churn_reason",
+        "customer_status",
+    ]
+
+    # Load and preprocess data
+    df = load_data(file_path)
+    df = drop_non_useful_columns(df, drop_columns)
+    df, label_encoders = encode_categorical_features(df)
+
+    # Define target variables for classification and regression
+    target_class = "churn_value"
+    target_reg = "cltv"
+
+    # Split the data
+    (
+        X_train_cls,
+        X_test_cls,
+        y_train_cls,
+        y_test_cls,
+        X_train_reg,
+        X_test_reg,
+        y_train_reg,
+        y_test_reg,
+    ) = split_data(df, target_class, target_reg)
+
+    # Compute various feature importance metrics
+    results = {
+        "Mutual Information Scores (Naïve Bayes)": compute_mutual_information(
+            X_train_cls, y_train_cls
+        ),
+        "Decision Tree Feature Importance": compute_decision_tree_importance(
+            X_train_cls, y_train_cls
+        ),
+        "Regression Tree Feature Importance": compute_decision_tree_regression_importance(
+            X_train_reg, y_train_reg
+        ),
+        "Random Forest Feature Importance": compute_random_forest_importance(
+            X_train_cls, y_train_cls
+        ),
+        "Discriminant Analysis F-Scores": compute_f_statistics(
+            X_train_cls, y_train_cls
+        ),
+    }
+
+    # Display the computed results
+    display_results(results)
+
+
+if __name__ == "__main__":
+    main()
