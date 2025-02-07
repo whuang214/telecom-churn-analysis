@@ -94,13 +94,43 @@ def compute_decision_tree_importance(
 def compute_decision_tree_regression_importance(
     X_train: pd.DataFrame, y_train: pd.Series
 ) -> pd.DataFrame:
-    """Compute feature importance using a Decision Tree Regressor for CLTV prediction."""
+    """
+    Compute feature importance using a Decision Tree Regressor for CLTV prediction.
+
+    Improvements:
+    - Handles missing values in the target (`y_train`).
+    - Ensures feature importance scores are normalized (sum to 1).
+    - Returns a sorted DataFrame with clearer importance interpretation.
+
+    Returns:
+        pd.DataFrame: Feature importance rankings sorted in descending order.
+    """
+    # Handle missing values in the target variable
+    valid_indices = y_train.dropna().index
+    X_train_clean = X_train.loc[valid_indices]
+    y_train_clean = y_train.loc[valid_indices]
+
+    # Initialize and train Decision Tree Regressor
     reg_tree = DecisionTreeRegressor(random_state=42)
-    reg_tree.fit(X_train, y_train)
+    reg_tree.fit(X_train_clean, y_train_clean)
+
+    # Get feature importance values
+    feature_importance = reg_tree.feature_importances_
+
+    # Create a DataFrame with feature importance scores
     importances_df = pd.DataFrame(
-        {"Feature": X_train.columns, "Importance": reg_tree.feature_importances_}
+        {"Feature": X_train.columns, "Importance": feature_importance}
     )
-    return importances_df.sort_values(by="Importance", ascending=False)
+
+    # Normalize importance scores for better interpretability
+    importances_df["Normalized Importance"] = (
+        importances_df["Importance"] / importances_df["Importance"].sum()
+    )
+
+    # Sort by importance in descending order
+    return importances_df.sort_values(by="Importance", ascending=False).reset_index(
+        drop=True
+    )
 
 
 def compute_random_forest_importance(
