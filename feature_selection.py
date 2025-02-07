@@ -5,6 +5,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_selection import mutual_info_classif, f_classif
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.inspection import permutation_importance
 
 
 def load_data(file_path: str) -> pd.DataFrame:
@@ -134,14 +135,46 @@ def compute_decision_tree_regression_importance(
 
 
 def compute_random_forest_importance(
-    X_train: pd.DataFrame, y_train: pd.Series
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    scoring: str = "accuracy",
+    n_repeats: int = 30,
+    random_state: int = 42,
 ) -> pd.DataFrame:
-    """Compute feature importance using a Random Forest Classifier."""
-    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    """
+    Compute feature importance using a Random Forest Classifier and permutation importance.
+
+    Parameters:
+        X_train (pd.DataFrame): Training features.
+        y_train (pd.Series): Training target variable.
+        scoring (str): Metric to evaluate performance drop (default 'accuracy').
+        n_repeats (int): Number of times to permute a feature to get stable estimates.
+        random_state (int): Seed for reproducibility.
+
+    Returns:
+        pd.DataFrame: DataFrame with features and their permutation importance scores,
+                      sorted in descending order.
+    """
+    # Fit the Random Forest Classifier
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=random_state)
     rf_model.fit(X_train, y_train)
-    importances_df = pd.DataFrame(
-        {"Feature": X_train.columns, "Importance": rf_model.feature_importances_}
+
+    # Compute permutation importance
+    perm_importance = permutation_importance(
+        rf_model,
+        X_train,
+        y_train,
+        scoring=scoring,
+        n_repeats=n_repeats,
+        random_state=random_state,
+        n_jobs=-1,
     )
+
+    # Create DataFrame of permutation importance scores
+    importances_df = pd.DataFrame(
+        {"Feature": X_train.columns, "Importance": perm_importance.importances_mean}
+    )
+
     return importances_df.sort_values(by="Importance", ascending=False)
 
 
