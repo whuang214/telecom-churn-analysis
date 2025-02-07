@@ -2,9 +2,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree, export_graphviz
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix
+
+# ignore warnings
+import warnings
+
+warnings.filterwarnings("ignore")
 
 
 def load_data(file_path: str) -> pd.DataFrame:
@@ -107,6 +112,39 @@ def perform_grid_search(X_train: pd.DataFrame, y_train: pd.Series):
     return grid_search.best_estimator_, grid_search
 
 
+def plot_zoomable_decision_tree(clf, X_train, y_train, feature_names, target_name):
+    """
+    Visualize the decision tree in an interactive, zoomable format using dtreeviz.
+    If dtreeviz is not installed, falls back to a static matplotlib plot.
+    """
+    try:
+        from dtreeviz.trees import dtreeviz
+
+        # Infer class names from the target values (sorted for consistency)
+        classes = sorted(y_train.unique())
+        class_names = [str(cls) for cls in classes]
+
+        viz = dtreeviz(
+            clf,
+            X_train,
+            y_train,
+            target_name=target_name,
+            feature_names=feature_names,
+            class_names=class_names,
+        )
+        # This will open the visualization in your default viewer.
+        # In a Jupyter Notebook, the SVG will be rendered inline.
+        viz.view()
+    except ImportError:
+        print(
+            "dtreeviz library is not installed. Falling back to a static plot using matplotlib."
+        )
+        plt.figure(figsize=(20, 10))
+        plot_tree(clf, feature_names=feature_names, filled=True)
+        plt.title("Decision Tree (static view; zoom with your toolbar if supported)")
+        plt.show()
+
+
 def main():
     # Configuration
     file_path = "data/CustomerData_Composite-4.csv"
@@ -150,6 +188,10 @@ def main():
     print("Validation Accuracy:", test_acc)
     plot_confusion_matrix(conf_matrix)
 
+    # (Optional) Visualize the initial decision tree in an interactive, zoomable view
+    print("\nDisplaying zoomable view of the initial Decision Tree...")
+    plot_zoomable_decision_tree(clf, X_train, y_train, best_features, target)
+
     # Fine-Tune using GridSearchCV
     best_tree, grid_search = perform_grid_search(X_train, y_train)
     train_acc_best, test_acc_best, _ = evaluate_model(
@@ -160,6 +202,10 @@ def main():
     print("Best Parameters:", grid_search.best_params_)
     print("Training Accuracy with Best Parameters:", train_acc_best)
     print("Validation Accuracy with Best Parameters:", test_acc_best)
+
+    # Visualize the fine-tuned decision tree in an interactive, zoomable view
+    print("\nDisplaying zoomable view of the fine-tuned Decision Tree...")
+    plot_zoomable_decision_tree(best_tree, X_train, y_train, best_features, target)
 
 
 if __name__ == "__main__":
